@@ -1,0 +1,137 @@
+You work in the Food and Beverage industry and are given three DataFrames containing product, sales, and inventory information.
+
+Input Schemas
+products
+Column Name	Data Type
+product_id	Long
+name	String
+category	String
+sales
+Column Name	Data Type
+sale_id	Long
+product_id	Long
+quantity	Long
+revenue	Long
+inventory
+Column Name	Data Type
+product_id	Long
+stock	Long
+warehouse	String
+A product may appear in multiple rows in sales (multiple transactions) and in multiple rows in inventory (multiple warehouses).
+
+Your task is to write a function that takes products, sales, and inventory and returns a DataFrame that:
+
+Aggregate sales: For each product, compute total_quantity and total_revenue by summing across all sales rows.
+Aggregate inventory: For each product, compute total_stock by summing stock across all warehouses.
+Combine: Join the aggregated sales and inventory data with the products table so every product appears in the output.
+Fill nulls: Replace any null values in total_quantity, total_revenue, and total_stock with 0.
+Output Schema
+Column Name	Data Type
+product_id	Long
+name	String
+category	String
+total_quantity	Long
+total_revenue	Long
+total_stock	Long
+The output should be sorted by product_id ascending.
+
+Example Input Tables
+products
+product_id	name	category
+1	Apple Juice	Beverages
+2	Orange Juice	Beverages
+3	Fresh Strawberries	Fruits
+sales
+sale_id	product_id	quantity	revenue
+1	1	10	20
+2	1	5	10
+3	2	8	16
+inventory
+product_id	stock	warehouse
+1	50	Warehouse A
+2	40	Warehouse A
+2	20	Warehouse B
+Example Output Table
+product_id	name	category	total_quantity	total_revenue	total_stock
+1	Apple Juice	Beverages	15	30	50
+2	Orange Juice	Beverages	8	16	60
+3	Fresh Strawberries	Fruits	0	0	0
+Orange Juice has stock in two warehouses totalling 60. Fresh Strawberries has no sales and no inventory, so all aggregated values are 0.
+
+
+
+Code:
+
+# Initialize Spark session
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import sum, col, coalesce, lit
+
+spark = SparkSession.builder.appName('Spark Playground').getOrCreate()
+
+#Copy the starter code or load the file path available in the problem statement 
+products = spark.createDataFrame([
+    (1, "Apple Juice",        "Beverages"),
+    (2, "Orange Juice",       "Beverages"),
+    (3, "Chocolate Bar",      "Snacks"),
+    (4, "Potato Chips",       "Snacks"),
+    (5, "Fresh Strawberries", "Fruits"),
+    (6, "Sparkling Water",    "Beverages"),
+], ["product_id", "name", "category"])
+
+sales = spark.createDataFrame([
+    (1, 1, 10, 20),
+    (2, 1,  5, 10),
+    (3, 2,  8, 16),
+    (4, 3,  2,  4),
+    (5, 4, 15, 30),
+    (6, 4,  5, 10),
+    (7, 6, 12, 24),
+], ["sale_id", "product_id", "quantity", "revenue"])
+
+# Aggregate sales
+sales_summary = (
+  sales
+  .groupBy("product_id")
+  .agg(
+    sum("quantity").alias("total_quantity"),
+    sum("revenue").alias("total_revenue")
+  )
+)
+
+inventory = spark.createDataFrame([
+    (1, 50, "Warehouse A"),
+    (2, 40, "Warehouse A"),
+    (2, 20, "Warehouse B"),
+    (3, 30, "Warehouse A"),
+    (4, 20, "Warehouse A"),
+    (4, 15, "Warehouse B"),
+    (5, 10, "Warehouse A"),
+], ["product_id", "stock", "warehouse"])
+
+# Aggregate Inventory
+
+inventory_summary = (
+  inventory
+  .groupBy("product_id")
+  .agg(
+    sum("stock").alias("total_stock")
+  )
+)
+
+df_result = (
+  products
+  .join(sales_summary, on = "product_id", how = "left")
+  .join(inventory_summary,  on = "product_id", how = "left")
+  .select(
+    "product_id",
+    "name",
+    "category",
+    coalesce(col("total_quantity"), lit(0)).alias("total_quantity"),
+    coalesce(col("total_revenue"), lit(0)).alias("total_revenue"),
+    coalesce(col("total_stock"), lit(0)).alias("total_stock")
+  )
+  .orderBy("product_id")
+)
+
+# Display the final DataFrame using the display() function.
+display(df_result)
