@@ -1,0 +1,102 @@
+Write a PySpark program to count the occurrences of each word in a given text file. The solution must utilize RDD transformations and actions for processing, and then convert the final RDD into a DataFrame for output. Sort DataFrame by count in descending order.
+
+Hint
+To convert an RDD to a DataFrame, use the spark.createDataFrame() method. Example:
+
+df = spark.createDataFrame(rdd, schema=["word", "count"])
+Input
+The input data will be provided as a plain text file located at /datasets/notes.txt. Each line contains a sentence or phrase. Example input text:
+
+hello world
+hello PySpark
+PySpark is fun
+hello world again
+Output
+Sample Output Schema
+word: String
+count: Long
+Example Table
+word	count
+hello	3
+world	2
+PySpark	2
+is	1
+fun	1
+again	1
+Explanation
+The program reads the text file into an RDD.
+The RDD is processed to split lines into words, count the occurrences of each word, and sort by word.
+The final RDD is converted into a DataFrame with columns word and count and sorted by count in descending order.
+Use display(df) to show the final DataFrame.
+
+
+Code:
+
+Approach 1 using RDD:
+
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder \
+    .appName("Spark Playground") \
+    .getOrCreate()
+
+# Read text file
+rdd = spark.sparkContext.textFile("/datasets/notes.txt")
+
+# 1. Split lines into words
+words_rdd = rdd.flatMap(lambda line: line.split())
+
+# 2. Convert each word into (word, 1)
+word_pairs = words_rdd.map(lambda word: (word, 1))
+
+# 3. Count occurrences of each word
+word_counts = word_pairs.reduceByKey(lambda a, b: a + b)
+
+# 4. Convert RDD to DataFrame
+df_result = spark.createDataFrame(
+    word_counts,
+    ["word", "count"]
+)
+
+# 5. Sort by count descending
+df_result = df_result.orderBy("count", ascending=False)
+
+display(df_result)
+
+
+Approach 2 (Using DF only):
+
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder \
+    .appName("Spark Playground") \
+    .getOrCreate()
+
+# Read text file
+rdd = spark.sparkContext.textFile("/datasets/notes.txt")
+
+# Convert lines directly into (word, 1)
+word_pairs = rdd.flatMap(
+    lambda line: line.split()
+).map(
+    lambda word: (word, 1)
+)
+
+# Count words
+word_counts = word_pairs.reduceByKey(
+    lambda a, b: a + b
+)
+
+# Convert to DataFrame
+df_result = spark.createDataFrame(
+    word_counts,
+    ["word", "count"]
+)
+
+# Sort by count descending
+df_result = df_result.orderBy(
+    "count",
+    ascending=False
+)
+
+display(df_result)
