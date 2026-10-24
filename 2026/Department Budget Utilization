@@ -1,0 +1,151 @@
+You are given two DataFrames - employees that records employee details and salaries, and departments that records each department's approved headcount budget.
+
+Your goal is to audit salary costs against department budgets and identify the top earner in each department.
+
+Input Schema
+
+employees
+
+Column Name	Data Type
+employee_id	Long
+name	String
+department_id	Long
+salary	Long
+departments
+Column Name	Data Type
+department_id	Long
+department_name	String
+budget	Long
+
+Your task is to write a function that takes employees and departments and returns a DataFrame that:
+
+Compute total salary cost: For each department, calculate the sum of all employee salaries.
+Compute utilization: Calculate salary budget utilization as a percentage of the department's budget, rounded to 2 decimal places.
+Flag over-budget departments: Mark a department as over budget if its total salary cost strictly exceeds its budget.
+Identify top earner: For each department, find the name and salary of the highest-paid employee. If two employees share the same salary, return either one.
+Return one row per department with all computed fields.
+
+Output Schema
+
+Column Name	Data Type
+
+department_name	String
+total_salary	Long
+budget	Long
+utilization_pct	Double
+is_over_budget	Boolean
+top_earner_name	String
+top_earner_salary	Long
+Example Input
+
+employees (subset)
+
+employee_id	name	department_id	salary
+
+6	Frank	2	75000
+7	Grace	2	80000
+8	Hank	2	60000
+9	Ivy	3	55000
+10	Jack	3	50000
+11	Kate	3	45000
+
+departments (subset)
+
+department_id	department_name	budget
+
+2	Marketing	200000
+3	HR	150000
+
+Example Output
+department_name	total_salary	budget	utilization_pct	is_over_budget	top_earner_name	top_earner_salary
+Marketing	215000	200000	107.50	true	Grace	80000
+HR	150000	150000	100.00	false	Ivy	55000
+
+Note: HR's total salary equals its budget exactly - it is not flagged as over budget. The full dataset includes 4 departments.
+
+Code:
+
+
+from pyspark.sql import SparkSession
+from pyspark.sql.window import Window
+from pyspark.sql.functions import col, sum, round, when, row_number, desc
+
+spark = SparkSession.builder.appName("Spark Playground").getOrCreate()
+
+employees_data = [
+    (1,  "Alice",  1, 120000),
+    (2,  "Bob",    1, 130000),
+    (3,  "Carol",  1, 115000),
+    (4,  "Dave",   1, 140000),
+    (5,  "Eve",    1, 110000),
+    (6,  "Frank",  2, 75000),
+    (7,  "Grace",  2, 80000),
+    (8,  "Hank",   2, 60000),
+    (9,  "Ivy",    3, 55000),
+    (10, "Jack",   3, 50000),
+    (11, "Kate",   3, 45000),
+    (12, "Liam",   4, 90000),
+    (13, "Mia",    4, 85000),
+    (14, "Noah",   4, 70000),
+    (15, "Olivia", 4, 65000),
+]
+employees_columns = ["employee_id", "name", "department_id", "salary"]
+employees = spark.createDataFrame(employees_data, employees_columns)
+
+departments_data = [
+    (1, "Engineering", 700000),
+    (2, "Marketing",   200000),
+    (3, "HR",          150000),
+    (4, "Sales",       300000),
+]
+departments_columns = ["department_id", "department_name", "budget"]
+departments = spark.createDataFrame(departments_data, departments_columns)
+
+# 1. Calculate total salary for each department
+department_salary = employees.groupBy("department_id").agg(
+    sum("salary").alias("total_salary")
+)
+
+# 2. Find the highest-paid employee in each department
+window_spec = Window.partitionBy("department_id").orderBy(desc("salary"))
+
+top_earners = employees.withColumn(
+    "rank", row_number().over(window_spec)
+).filter(
+    col("rank") == 1
+).select(
+    "department_id",
+    col("name").alias("top_earner_name"),
+    col("salary").alias("top_earner_salary")
+)
+
+# 3. Combine department details with salary totals
+department_summary = department_salary.join(
+    departments, on="department_id", how="left"
+)
+
+# 4. Calculate budget utilization and over-budget status
+department_summary = department_summary.withColumn(
+    "utilization_pct",
+    round((col("total_salary") / col("budget")) * 100, 2)
+).withColumn(
+    "is_over_budget",
+    col("utilization_pct") > 100
+)
+
+# 5. Add top-earner details and select final columns
+result = department_summary.join(
+    top_earners, on="department_id", how="left"
+).select(
+    "department_name",
+    "total_salary",
+    "budget",
+    "utilization_pct",
+    "is_over_budget",
+    "top_earner_name",
+    "top_earner_salary"
+)
+
+# 6. Display final result
+result.show()
+display(result)
